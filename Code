@@ -1,0 +1,118 @@
+# Clean workspace
+rm(list=ls(all=TRUE))
+
+# Load necessary libraries
+library(MASS)
+library(betareg)
+library(robustbetareg)
+library(car)
+library(corrplot)
+
+# Load dataset
+data("GasolineYield")
+y = GasolineYield[,1]
+xx = GasolineYield[,-1]
+x = xx[,-5]
+
+# Create dataframe
+data = data.frame(y, x)
+
+# Fit Beta Regression Model
+model = betareg(y ~ ., data = data)
+
+# Model summary
+summary(model)
+
+# Extract coefficients and precision
+be = model$coefficients$mean
+phi = model$coefficients$precision
+
+# Calculate inverse of the covariance matrix
+xw = solve(vcov(model))[1:5, 1:5]
+lemda = eigen(xw)$values
+alpha = (eigen(xw)$vectors) %*% be
+
+# Identity matrix
+I = diag(1, 5)
+
+# Eigenvalue calculations
+lemax = max(lemda)
+almin = min(alpha^2)
+almax = max(alpha^2)
+lemin = min(lemda)
+
+# Improved Shrinkage Estimators
+k1 = phi / almin
+k2 = max(sqrt(phi / (alpha^2)))
+k3 = max(k1)
+k4 = (5 * phi) / sum(alpha^2)
+k4a = sqrt((5 * phi) / sum(alpha^2))
+k5 = (5 * phi) / sum(lemda * alpha^2)
+k6 = abs(min(phi / (2 * alpha^2 + phi / lemda)))
+kkl2 = abs(max(phi / (2 * alpha^2 + phi / lemda)))
+
+# Completely new Shrinkage Estimators
+q1 = phi / almin
+q2 = max((phi / alpha^2) * lemda)
+q3 = mean((phi * lemda) / alpha^2)
+q5 = 1 / k5
+
+# Liu parameter
+dls = abs(max(0, (alpha^2) / ((phi / lemda) + alpha^2)))
+d = min(phi / alpha^2)
+d2 = sqrt(d)
+q6 = sqrt(q5)
+
+# Ridge Regression Estimators
+RR1 = solve(xw + k1 * I) %*% xw %*% be
+RR2 = solve(xw + I) %*% xw %*% be
+RR3 = solve(xw + I) %*% (xw + k5 * I) %*% be
+RR4 = solve(xw + k6 * I) %*% (xw - k6 * I) %*% be
+
+# Robust Beta Regression
+robust1 = robustbetareg(y ~ ., data = data, type = "MDPDE", alpha = 0.09)
+robust2 = robustbetareg(y ~ ., data = data, type = "SMLE", alpha = 0.09)
+robust3 = robustbetareg(y ~ ., data = data, type = "LSMLE", alpha = 0.09)
+robust4 = robustbetareg(y ~ ., data = data, type = "LMDPDE", alpha = 0.09)
+
+# Extract robust coefficients
+rr = robust1$coefficients$mean
+rr2 = robust2$coefficients$mean
+rr3 = robust3$coefficients$mean
+rr4 = robust4$coefficients$mean
+
+# More Shrinkage Estimators
+k1a = phi / min(rr^2)
+k1b = phi / min(rr2^2)
+k1c = phi / min(rr3^2)
+k1d = phi / min(rr4^2)
+
+# Mean Squared Errors
+e = lemda
+msemle = sum(phi / e)
+mseridge = phi * sum((e + (k1^2) * be^2) / (e + k1)^2)
+mseridge_rr = phi * sum((e + (k1^2) * rr^2) / (e + k1)^2)
+mseridge_rr2 = phi * sum((e + (k1^2) * rr2^2) / (e + k1)^2)
+mseridge_rr3 = phi * sum((e + (k1^2) * rr3^2) / (e + k1)^2)
+mseridge_rr4 = phi * sum((e + (k1^2) * rr4^2) / (e + k1)^2)
+
+# Results
+res = c(msemle, mseridge, mseridge_rr, mseridge_rr2, mseridge_rr3, mseridge_rr4)
+res1 = cbind(be, RR1, rr, rr2, rr3, rr4)
+dat = rbind(res1, res)
+colnames(dat) = c('BR', 'Ridge', 'Robust_A', 'Robust_B', 'Robust_C', 'Robust_D')
+rownames(dat) = c('Intercept', 'X1', 'X2', 'X3', 'X4', 'MSE')
+
+# Display results
+dat   
+
+# Variance Inflation Factor
+VIF = vif(model)
+VIF
+
+# Correlation Plot
+M = cor(x)
+corrplot(M, method = 'number', mar = c(0, 0, 2, 0), tl.cex = 2)
+
+# Diagnostic Plots
+plot(model)
